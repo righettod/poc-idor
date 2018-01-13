@@ -1,0 +1,215 @@
+__NOTOC__
+<div style="width:100%;height:160px;border:0,margin:0;overflow: hidden;">[[File:Cheatsheets-header.jpg|link=]]</div>
+
+{| style="padding: 0;margin:0;margin-top:10px;text-align:left;" |-
+| valign="top" style="border-right: 1px dotted gray;padding-right:25px;" |
+Last revision (mm/dd/yy): '''{{REVISIONMONTH}}/{{REVISIONDAY}}/{{REVISIONYEAR}}'''
+
+__TOC__{{TOC hidden}}
+
+= Introduction =
+
+<pre>
+Provide high level information about the topic in order to introduce it to people that do not know it.
+You can add pointer to external sources if needed but at least give an overview allowing a reader to continue on the CS.
+You can also add schema or diagram in any part of the CS but be sure to respect the copyright of the source file.
+</pre>
+
+'''I'''nsecure '''D'''irect '''O'''bject '''R'''eference (called '''IDOR''' from here) occurs when a application exposes a reference to an internal implementation object. Using this way it reveals the real identifier and used format/pattern of the element in the storage backend side. The most common example of it (altrough is not limited to this one) is a record identifier in a storage system (database, filesystem and so on).
+
+IDOR is referenced in element [[Top_10_2013-A4-Insecure_Direct_Object_References|A4]] of the OWASP Top 10 in the 2013 edition.
+
+= Context =
+
+<pre>
+Describe the security issues that are bring or commonly meet when someone must work on this topic.
+</pre>
+
+IDOR do not bring a direct security issue because, by itself, it reveals only the format/pattern of the object identifier. IDOR bring, depending on the format/pattern in place, a capacity for the attacker to mount a enumeration attack in order to try to probe access to the associated objects.
+
+Enumeration attack can be described in the way in which the attacker build a collection of valid identifier using the disovered format/pattern and test them against the application.
+
+'''For example:'''
+
+Imagine an HR application exposing a service accepting employee ID in order to return the employee information and for which the format/pattern of the employee ID is the following:
+
+<pre>
+EMP-00000
+EMP-00001
+EMP-00002
+...
+</pre>
+
+Based on this, an attacker can build a collection of valid ID from ''EMP-00000'' to ''EMP-99999''.
+
+
+To be exploited, an IDOR issue must be combined with an [[Access_Control_Cheat_Sheet|Access Control]] issue because it's the Access Control issue that "allow" the attacker to access to the object for which he have guessed the identifier through is enumeration attack.
+
+
+= Additional remarks =
+
+
+'''From Jeff Williams''':
+
+Direct Object Reference is fundamentally a Access Control problem. We split it out to emphasize the difference between URL access control and data layer access control.  You can’t do anything about the data-layer problems with URL access control.  And they’re not really input validation problems either.  But we see DOR manipulation all the time.   If we list only “Messed-up from the Floor-up Access Control” then people will probably only put in SiteMinder or JEE declarative access control on URLs and call it a day.  That’s what we’re trying to avoid.
+
+'''From Eric Sheridan''':
+
+An object reference map is first populated with a list of authorized values which are temporarily stored in the session. When the user requests a field (ex: color=654321), the application does a lookup in this map from the session to determine the appropriate column name. If the value does not exist in this limited map, the user is not authorized. Reference maps should not be global (i.e. include every possible value), they are temporary maps/dictionaries that are only ever populated with authorized values.
+
+“A direct object reference occurs when a developer exposes a reference to an internal implementation object, such as a file, directory, database record, or key, as a URL or form parameter.”
+
+I’m “down” with DOR’s for files, directories, etc. But not so much for ALL databases primary keys. That’s just insane, like you are suggesting. I think that anytime database primary keys are exposed, an access control rule is required. There is no way to practically DOR all database primary keys in a real enterprise or post-enterprise system.
+
+But, suppose a user has a list of accounts, like a bank where database id 23456 is their checking account. I’d DOR that in a heartbeat. You need to be prudent about this
+
+
+= Objective =
+
+<pre>
+Describe the objective of the CS.
+What the CS will bring to the reader.
+</pre>
+
+This article propose a idea to prevent the exposure of real identifier in a simple, portable and stateless way because the proposal need to handle Session and Session-less application.
+
+= Proposition =
+
+<pre>
+1. Describe how to address the security issues in a possible technology agnostic approach.
+2. Using your POC, describe your solution proposal in the more teaching possible way. Use "syntaxhighlight" tag for code snippet.
+</pre>
+
+The proposal use a hash to replace the direct identifier. This hash is salted with a value defined at application level in order support topology in which the application is deployed in multi-instance mode (case for production).
+
+Using a hash allow the following properties:
+* Do not require to maintain a mapping table (real ID vs front end ID) in user session or application level cache.
+* Make creation of a collection a enumeration values more difficult to achieve because, even if attacker can guess the hash algorithm from sizen, it can reproduce value due to the salt than is not tied to the hidden value.
+
+This is the implementation of the utility class that generate the identifer to used for exchange with client:
+
+<syntaxhighlight lang="java">
+import javax.xml.bind.DatatypeConverter;
+import java.io.UnsupportedEncodingException;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+/**
+ * Handle the creation of ID that will be send to front end side in order to prevent IDOR
+ */
+public class IDORUtil {
+
+    /**
+     * SALT used for the generation of the HASH of the real item identifier in order to prevent to forge it on front end side.
+     */
+    private static final String SALT = "[READ_IT_FROM_APP_CONFIGURATION]";
+
+    /**
+     * Compute a identifier that will be send to the front end and be used as item unique identifier on client side.
+     *
+     * @param realItemBackendIdentifier Identifier of the item on the backend storage (real identifier)
+     * @return A string representing the identifier to use
+     * @throws UnsupportedEncodingException If string's byte cannot be obtained
+     * @throws NoSuchAlgorithmException If the hashing algorithm used is not supported is not available
+     */
+    public static String computeFrontEndIdentifier(String realItemBackendIdentifier) throws NoSuchAlgorithmException, UnsupportedEncodingException {
+        String frontEndId = null;
+        if (realItemBackendIdentifier != null && !realItemBackendIdentifier.trim().isEmpty()) {
+            //Prefix the value with the SALT
+            String tmp = SALT + realItemBackendIdentifier;
+            //Get and configure message digester
+            //We use SHA1 here for the following reason even if SHA1 have now potential collision:
+            //1. We do not store sensitive information, just technical ID
+            //2. We want that the ID stay short but not guessable
+            //3. We want that a maximum of backend storage support the algorithm used in order to compute it in selection query
+            //If your backend storage supports SHA256 so use it instead of SHA1
+            MessageDigest digester = MessageDigest.getInstance("sha1");
+            //Compute the hash
+            byte[] hash = digester.digest(tmp.getBytes("utf-8"));
+            //Encode is in HEX
+            frontEndId = DatatypeConverter.printHexBinary(hash);
+
+        }
+        return frontEndId;
+    }
+
+}
+</syntaxhighlight>
+
+
+This is the example of a services using the class above:
+
+<syntaxhighlight lang="java" highlight="13-16,41-44">
+/**
+ * Service to list all available movies
+ *
+ * @return The list of movies as JSON response
+ */
+@RequestMapping(value = "/movies", method = GET, produces = {MediaType.APPLICATION_JSON_VALUE})
+public List<Movie> listAllMovies() {
+	List<Movie> result = new ArrayList<>();
+
+	try {
+		this.movies.forEach(m -> {
+			try {
+				//Compute the front end ID fof the current element
+				String frontEndId = IDORUtil.computeFrontEndIdentifier(m.getBackendIdentifier());
+				//Create a new item container with the computed ID and add it to the result list
+				result.add(new Movie(frontEndId, m.getName()));
+			} catch (Exception e) {
+				logger.error(e);
+			}
+		});
+	} catch (Exception e) {
+		logger.error(e);
+		result.clear();
+	}
+
+	return result;
+}
+
+/**
+ * Service to obtain the information on a specific movie
+ *
+ * @param id Movie identifier from a front end point of view
+ * @return The movie name
+ */
+@RequestMapping(value = "/movies/{id}", method = GET, produces = {MediaType.APPLICATION_JSON_VALUE})
+public String obtainMovieName(@PathVariable("id") String id) {
+
+	Optional<Movie> movie = this.movies.stream().filter(m -> {
+		boolean match;
+		try {
+			//Compute the front end ID for the current element
+			String frontEndId = IDORUtil.computeFrontEndIdentifier(m.getBackendIdentifier());
+			//Check if the computed ID match the one provided
+			match = frontEndId.equals(id);
+		} catch (Exception e) {
+			//Ensure that in case of error no item is returned
+			match = false;
+			logger.error(e);
+		}
+		return match;
+	}).findFirst();
+
+	return (movie.isPresent()) ? movie.get().getName() : "";
+}
+</syntaxhighlight>
+
+= Sources of the prototype =
+
+Github repository: https://github.com/righettod/poc-idor.
+
+= Authors and Primary Editors =
+
+Eric Sheridan
+[[User:User:Jeff_Williams| Jeff Williams]] - jeff.williams@contrastsecurity.com
+[[User:Dominique_RIGHETTO|Dominique Righetto]] - dominique.righetto@owasp.org
+
+= Other Cheatsheets =
+
+{{Cheatsheet_Navigation_Body}}
+
+|}
+
+[[Category:Cheatsheets]]
