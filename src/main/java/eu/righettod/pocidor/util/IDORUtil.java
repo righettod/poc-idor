@@ -34,7 +34,7 @@ public class IDORUtil {
             //We use SHA1 here for the following reason even if SHA1 have now potential collision:
             //1. We do not store sensitive information, just technical ID
             //2. We want that the ID stay short but not guessable
-            //3. We want that a maximum of backend storage support the algorithm used in order to compute it in selection query
+            //3. We want that a maximum of backend storage support the algorithm used in order to compute it in selection query/request
             //If your backend storage supports SHA256 so use it instead of SHA1
             MessageDigest digester = MessageDigest.getInstance("sha1");
             //Compute the hash
