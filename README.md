@@ -6,7 +6,7 @@ It's the code repository of the OWASP cheatsheet [Insecure Direct Object Referen
 
 Use either:
 * The `Run Application` running configuration from Intellij project.
-* The command line `gradlew.bat bootRun`.
+* The command line `gradlew.bat bootRun`
 
 The application is then exposed on http://localhost:8080
 
@@ -31,6 +31,6 @@ $ curl http://localhost:8080/movies/F1244AD6A71A9C6C9E08BA6D819D119FBD7944D0
 
 # Build
 
-Use the command line `gradlew.bat build`.
+Use the command line `gradlew.bat build`
 
 The application runnable jar file will be generated into the folder **build/libs** (use the **.jar** file).
